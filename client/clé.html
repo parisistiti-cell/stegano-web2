@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Générateur de clés de décodage</title>
+<style>
+:root{--bg:#f4f1ea;--card:#fff;--tx:#1d1d1f;--mut:#6b6b70;--ac:#1f6f5c;--bd:#d8d4c8;--err:#b3261e;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15171a;--card:#1f2226;--tx:#ececec;--mut:#9a9aa0;--ac:#4cc3a4;--bd:#34383d;--err:#ff8a80}}
+:root[data-theme="dark"]{--bg:#15171a;--card:#1f2226;--tx:#ececec;--mut:#9a9aa0;--ac:#4cc3a4;--bd:#34383d;--err:#ff8a80}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;justify-content:center;padding:24px 16px}
+main{width:100%;max-width:440px;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:24px}
+h1{font-size:1.3rem;margin:0 0 4px}
+p.sub{color:var(--mut);margin:0 0 20px;font-size:.9rem}
+label{display:block;font-size:.85rem;color:var(--mut);margin:14px 0 6px}
+input{width:100%;font-size:1.2rem;padding:12px;border-radius:10px;border:1px solid var(--bd);background:var(--bg);color:var(--tx);letter-spacing:.05em}
+input:focus{outline:2px solid var(--ac);border-color:transparent}
+button{margin-top:20px;width:100%;padding:12px;font-size:1rem;border:0;border-radius:10px;background:var(--ac);color:var(--bg);font-weight:600;cursor:pointer}
+button:disabled{opacity:.6;cursor:wait}
+#err{color:var(--err);margin-top:14px;font-size:.9rem;min-height:1.2em}
+#res{margin-top:10px;text-align:center;display:none}
+#code{font-size:3rem;font-weight:700;letter-spacing:.12em;color:var(--ac);word-break:break-all}
+#cp{margin-top:12px;width:auto;padding:8px 18px;font-size:.9rem;background:transparent;color:var(--ac);border:1px solid var(--ac)}
+</style>
+</head>
+<body>
+<main>
+<h1>Générateur de clés de décodage</h1>
+<p class="sub">Entrez deux dates au format jj/mm/aaaa.</p>
+<label for="d1">Date 1</label>
+<input id="d1" inputmode="numeric" placeholder="14/08/1968" maxlength="10" autocomplete="off">
+<label for="d2">Date 2</label>
+<input id="d2" inputmode="numeric" placeholder="07/11/1981" maxlength="10" autocomplete="off">
+<button id="go">Générer la clé</button>
+<div id="err"></div>
+<div id="res"><div id="code"></div><button id="cp">Copier la clé</button></div>
+</main>
+<script>
+// À REMPLACER par l'adresse de votre Worker Cloudflare
+var WORKER_URL = "https://cle-generator.VOTRE-SOUS-DOMAINE.workers.dev";
+
+function valide(s){
+  var m=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(s.trim());
+  if(!m)return false;
+  var j=+m[1],mo=+m[2],a=+m[3],d=new Date(a,mo-1,j);
+  return d.getFullYear()===a&&d.getMonth()===mo-1&&d.getDate()===j;
+}
+function autoSlash(e){
+  var v=e.target.value.replace(/[^\d]/g,'').slice(0,8),o=v;
+  if(v.length>4)o=v.slice(0,2)+'/'+v.slice(2,4)+'/'+v.slice(4);
+  else if(v.length>2)o=v.slice(0,2)+'/'+v.slice(2);
+  e.target.value=o;
+}
+async function calc(){
+  var err=document.getElementById('err'),res=document.getElementById('res'),go=document.getElementById('go');
+  err.textContent='';res.style.display='none';
+  var d1=document.getElementById('d1').value,d2=document.getElementById('d2').value;
+  if(!valide(d1)||!valide(d2)){err.textContent='Veuillez saisir deux dates valides (jj/mm/aaaa).';return;}
+  go.disabled=true;
+  try{
+    var r=await fetch(WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({d1:d1,d2:d2})});
+    var data=await r.json();
+    if(!r.ok||!data.cle){err.textContent=data.erreur||'Erreur du serveur.';}
+    else{document.getElementById('code').textContent=data.cle;res.style.display='block';}
+  }catch(e){err.textContent='Impossible de joindre le serveur.';}
+  go.disabled=false;
+}
+['d1','d2'].forEach(function(id){
+  var el=document.getElementById(id);
+  el.addEventListener('input',autoSlash);
+  el.addEventListener('keydown',function(e){if(e.key==='Enter'){id==='d1'?document.getElementById('d2').focus():calc();}});
+});
+document.getElementById('go').addEventListener('click',calc);
+document.getElementById('cp').addEventListener('click',function(){
+  var btn=this,t=document.getElementById('code').textContent;
+  function ok(){btn.textContent='Copié ✓';setTimeout(function(){btn.textContent='Copier la clé';},1500);}
+  function fallback(){
+    var ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();
+    try{document.execCommand('copy');ok();}catch(e){btn.textContent='Copie impossible';}
+    document.body.removeChild(ta);
+  }
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,fallback);}
+    else fallback();
+  }catch(e){fallback();}
+});
+</script>
+</body>
+</html>
